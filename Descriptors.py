@@ -1,26 +1,50 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from skimage import io, color
-from skimage.util import img_as_ubyte
-import pandas as pd
-import rasterio
-from imageio import imwrite
-import matplotlib.pyplot as plt
-from skimage.io import imread
-
 class local_binary_pattern:
+    """
+    Computes Local Binary Pattern (LBP) descriptors for a grayscale image.
+
+    Attributes:
+        img (ndarray): Input grayscale image.
+        points (int): Number of circularly symmetric neighbor points for descriptors
+        radius (int): Radius parameter for descriptors
+        method (str): Either 'default' or 'uniform'
+    """
     def __init__(self, img, P, R, method):
+        """
+        Initialize the LBP class with image and parameters.
+
+        Args:
+            img (ndarray): Grayscale input image.
+            P (int): Number of circularly symmetric neighbor points for descriptors
+            R (int):  Radius parameter for descriptors
+            method (str): Type of LBP ('default' or 'uniform').
+        """
         self.img = img
         self.points = P
         self.radius = R
         self.method = method
     def transition_count(self, binary):
+        """
+        Count number of 0-1 or 1-0 transitions in a binary string.
+
+        Args:
+            binary (str): Binary code string.
+
+        Returns:
+            transitions : Number of transitions in the binary pattern.
+        """
         transitions = 0
         for i in range(self.points):
             if binary[i] != binary[(i + 1) % len(binary)]:
                 transitions +=1 
             return transitions  
     def algorithm(self):
+        """
+        Compute LBP descriptor for the entire image.
+
+        Returns:
+            lbp_image: LBP-coded image of same size as input.
+        """
         h, w = self.img.shape
         lbp_image = np.zeros((h, w), dtype=np.uint8)
         pad = self.radius
@@ -50,6 +74,17 @@ class local_binary_pattern:
                 lbp_image[i - pad, j - pad] = value
         return lbp_image
 def var_img(img, size):
+    """
+    Compute local variance image using a sliding window.
+
+    Args:
+        img (ndarray): Input grayscale image.
+        size (int): Window size.
+
+    Returns:
+        var_img : Image of local variance values.
+    """
+
     pad = size //2 
     h, w = img.shape
     var_img = np.zeros((h,w), dtype= np.float32)
@@ -59,7 +94,7 @@ def var_img(img, size):
             window = img[i:i+size, j:j+size]
             var_img[i,j] = np.var(window)
     return var_img
-
+#Get functions
 def get_lbp(img, P=8, R=1, method='default'):
     return local_binary_pattern(img, P, R, method).algorithm()
 
@@ -68,7 +103,18 @@ def get_var(img, size=3):
 
 def get_lbp_ri(img, P=8, R=1):
     return local_binary_pattern(img, P, R, method='uniform')
+
 def edge_pad(img, pad):
+    """
+    Apply edge replication padding.
+
+    Args:
+        img (ndarray): Input grayscale image.
+        pad (int): Padding width.
+
+    Returns:
+        padded: Edge-padded image.
+    """
     H, W = img.shape
     padded = np.zeros((H + 2*pad, W + 2*pad), dtype=img.dtype)
 
@@ -89,6 +135,17 @@ def edge_pad(img, pad):
 
     return padded
 def get_wld(img, P=8, R=1):
+    """
+    Compute Weber Local Descriptor (WLD) combining excitation, orientation, and local variance.
+
+    Args:
+        img (ndarray): Input grayscale image.
+        P (int): Number of neighbors for directional analysis for descriptor
+        R (int): Radius for neighborhood sampling for descriptor
+
+    Returns:
+        combined: Combined WLD image scaled to [0, 255].
+    """
     img = img.astype(np.float32)
     h, w = img.shape
     excitation_img = np.zeros((h,w), dtype=np.float32)
@@ -120,109 +177,4 @@ def get_wld(img, P=8, R=1):
     #combine into one histogram
     combined = (excitation_norm + orientation_norm + var_norm) / 3
     return combined.astype(np.uint8)
-
-
-def bhattacharyya(h1, h2):
-    """
-    Bhattacharya distance comparing differences between two histograms
-    
-    Args:
-    h1: Trained Histogram
-    h2: Ground Truth Histogram
-
-    Returns:
-        Computed distance
-    """
-    return -np.log(np.sum(np.sqrt(h1 * h2)) + 1e-10)
-
-def patch_histogram(desc_img, mask, bins=256):
-    """
-    computes a normalized histogram of a descriptor image (WLD, WLD_Var, etc)
-    Args:
-        desc_img: our grayscaled image
-        mask: masked region
-        bins: # of bins in histogram
-
-    Returns:
-        hist: noramlized histogram
-    """
-    #acts as boolean mask selecting the active pixels
-    values = desc_img[mask > 0]
-    #forms the histogram with the given values ranging from 0 to the number of bins we want
-    hist, _ = np.histogram(values, bins=bins, range=(0, bins), density=True)
-    return hist
-### This part is classifying pixel
-def classify_pixel(desc_img, class_models, window=40):
-    h, w = desc_img.shape
-    result = np.zeros((h, w), dtype=int)
-    pad = window // 2
-    padded = np.pad(desc_img, pad, mode='reflect')
-
-    for i in range(h):
-        for j in range(w):
-            patch = padded[i:i+window, j:j+window]
-            hist, _ = np.histogram(patch, bins=256, range=(0, 256), density=True)
-            dists = [bhattacharyya(hist, model) for model in class_models]
-            result[i, j] = np.argmin(dists)
-    return result
-
-def run_pipeline(image_path, label_masks, descriptor="lbp", P=8, R=1):
-    img = io.imread(image_path, as_gray=True)
-    img = img_as_ubyte(img)
-
-    if descriptor == "lbp":
-        desc_img = get_lbp(img, P, R, method='default')
-    elif descriptor == "lbpriu":
-        desc_img = get_lbp(img, P, R, method='uniform')
-    elif descriptor == "wld":
-        desc_img = get_wld(img, P, R)
-    else:
-        raise ValueError("Invalid descriptor")
-
-    class_models = []
-    for ___, mask in label_masks.items():
-        hist = patch_histogram(desc_img, mask)
-        class_models.append(hist)
-
-    classified = classify_pixel(desc_img, class_models)
-
-    plt.imshow(classified, cmap='tab10')
-    plt.title(f"Classified Image - {descriptor.upper()}")
-    plt.colorbar()
-    plt.show()
-
-    return classified
-
-def compute_accuracy(pred, testing_masks):
-    all_gt = []
-    all_pred = []
-
-    label_map = {name: i for i, name in enumerate(testing_masks.keys())}
-
-    for name, mask in testing_masks.items():
-        true_label = label_map[name]
-        indices = np.where(mask > 0)
-        all_gt.extend([true_label] * len(indices[0]))
-        all_pred.extend(pred[indices])
-
-    all_gt = np.array(all_gt)
-    all_pred = np.array(all_pred)
-
-    correct = np.sum(all_gt == all_pred)
-    total = len(all_gt)
-    acc = correct / total * 100
-    return acc
-
-def evaluate_all_scales(image_path, label_masks, test_masks):
-    results = []
-    for (P, R) in [(8,1), (16,2), (24,3)]:
-        acc_lbp  = compute_accuracy(run_pipeline(image_path, label_masks, "lbp", P, R), label_masks, test_masks)
-        acc_ri   = compute_accuracy(run_pipeline(image_path, label_masks, "lbpriu", P, R), label_masks, test_masks)
-        acc_wld  = compute_accuracy(run_pipeline(image_path, label_masks, "wld", P, R), label_masks, test_masks)
-        results.append([f"{P},{R}", acc_lbp, acc_ri, acc_wld])
-
-    df = pd.DataFrame(results, columns=["P,R", "LBP (%)", "LBPRIU (%)", "WLD (%)"])
-    df.loc[len(df)] = ["Mean"] + df.iloc[:, 1:].mean().tolist()
-    print(df.to_string(index=False))
-    return df
 

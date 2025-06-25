@@ -1,9 +1,10 @@
 from skimage.io import imread
-from imageio import imwrite
 import numpy as np
 import matplotlib.pyplot as plt
-from skimage.color import rgb2gray
+from matplotlib.patches import Patch
 from skimage.util import img_as_ubyte
+from train_test import evaluate_all_scales
+
 
 img = imread("crop.png", as_gray=True)
 img = img_as_ubyte(img)
