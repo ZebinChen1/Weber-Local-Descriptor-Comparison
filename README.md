@@ -1,3 +1,3 @@
 # Weber Local Descriptor Comparison
 
-The beginning of the journey with Image Processing. The repository consists of descriptor models and classification pipelines used in remote sensing tasks specifically dealing with urban planning using classification. We compare modern day descriptors with a newly founded WLD (Weber Local Descriptor)
+This repository contains descriptor models and classification pipelines designed for remote sensing tasks, with a particular focus on urban planning through land cover classification. It includes implementations of both classical and modern texture descriptors and evaluates their performance on satellite imagery. A key contribution of this work is the comparison of established descriptors with the recently introduced Weber Local Descriptor (WLD), highlighting its potential advantages in capturing fine grained structural and contrast features relevant to urban environments.
